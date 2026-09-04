@@ -1,24 +1,6 @@
 repeat
 	task.wait()
 until game:IsLoaded() and game.Players.LocalPlayer
-
-do
-	_G.FastAttack = nil
-	_G.Stop = nil
-	SWAN_KILLED = false
-	MinkQuestStage = 0
-	HumanQuestStage = 0
-	CheckedMelee = false
-	CAN_SPAWN_CAKE_PRINCE = true
-	LastServersDataPulled = 0
-	CachedServers = {}
-	QuestController = nil
-	CACHE_NPC_LIST = nil
-	KEYS = nil
-	IRS = nil
-	MATCH = nil
-	RaidController = nil
-end
 Config = {
 	UI = true,
 	Team = "Marines",
@@ -425,30 +407,6 @@ local tweens = cloneref(game:GetService("TweenService"))
 local vim = Instance.new("VirtualInputManager")
 local cs = game:GetService("CollectionService")
 
--- GOD mode: restore health every frame (critical for 5 FPS)
-if Config.GOD then
-	task.spawn(function()
-		while true do
-			task.wait()
-			pcall(function()
-				if character and character:FindFirstChildOfClass("Humanoid") then
-					local hum = character:FindFirstChildOfClass("Humanoid")
-					if hum.Health < hum.MaxHealth then
-						pcall(sethiddenproperty, hum, "Health", hum.MaxHealth)
-					end
-				end
-			end)
-		end
-	end)
-	plr.CharacterAdded:Connect(function(char)
-		character = char
-		char:WaitForChild("Humanoid").Died:Connect(function()
-			task.wait(1)
-			pcall(function() plr:LoadCharacter() end)
-		end)
-	end)
-end
-
 -- No fall
 
 pcall(function()
@@ -570,7 +528,7 @@ task.spawn(function()
 		end
 		local success, err = pcall(function()
 			local response = req({
-				Url = 'http://160.191.243.153:51234/post',
+				Url = 'http://103.77.241.31:1901/xOKcICjhMvaZ1NCqj0yd7KW1n6as960lopwwBLr6/server/post',
 				Method = "POST",
 				Headers = {
 					["Content-Type"] = "application/json"
@@ -595,7 +553,7 @@ task.spawn(function()
 		local isNightVal = isNight(game.Lighting.ClockTime)
 		local Elite = {'Diablo', 'Urban', 'Deandre'}
 		local RareBoss = {'rip_indra True Form', 'Dough King', 'Cake Prince', 'Soul Reaper', 'Cursed Captain'}
-		local myNote = getgenv().ToolNote or 'trietgod'
+		local myNote = getgenv().ToolNote or 'kaigod'
 		for i, v in ipairs(Elite) do
 			if findMob(v) then
 				sendPayload({
@@ -727,6 +685,8 @@ if not Config.UI then
 	SetText = function() end
 else
 	local TweenService = game:GetService("TweenService")
+	local Lighting = game:GetService("Lighting")
+	-- [Blur & BlackScreen da bi xoa]
 	local screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "SkiderHubGUI"
 	screenGui.ResetOnSpawn = false
@@ -735,6 +695,11 @@ else
 	local frame = Instance.new("Frame", screenGui)
 	frame.Size = UDim2.new(1, 0, 1, 0)
 	frame.BackgroundTransparency = 1
+	local bg = Instance.new("Frame", frame)
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = Color3.fromRGB(5, 5, 10)
+	bg.BackgroundTransparency = 1
+	-- [Frame den bi bo qua, khong tween sang 0.2]
 	local getTitleScale = function()
 		local s = workspace.CurrentCamera.ViewportSize
 		return math.clamp(math.min(s.X, s.Y) / 600, 0.3, 0.5)
@@ -923,183 +888,6 @@ else
 	end
 end
 
--- Hop Low (scan server thực sự, ưu tiên ≤ 5 player)
-if Config.HopLow then
-	local _hopLowRunning = true
-	local _hopLowMaxPlayers = 5
-	local _hopLowMaxPages = 100
-	local _hopLowPageDelay = 0.02
-	local _hopLowPageRetries = 3
-	local _hopLowRetryDelay = 0.20
-	local _hopLowScanTimeout = 8
-	local _hopLowTried = {}
-
-	local _hopLowTP = { StartedAt = 0, FailedAt = 0 }
-	local _hopTeleportService = cloneref(game:GetService("TeleportService"))
-
-	_hopTeleportService.TeleportInitFailed:Connect(function(p, result)
-		if p ~= plr then return end
-		_hopLowTP.FailedAt = os.clock()
-	end)
-	plr.OnTeleport:Connect(function(state)
-		local name = ""
-		pcall(function() name = state.Name end)
-		if name == "Failed" then
-			_hopLowTP.FailedAt = os.clock()
-		else
-			_hopLowTP.StartedAt = os.clock()
-		end
-	end)
-
-	local function _scanHopLowServers()
-		local browser = game:GetService("ReplicatedStorage"):FindFirstChild("__ServerBrowser")
-		if not browser then return {}, "__ServerBrowser not found" end
-
-		local byJob = {}
-		local completed = 0
-
-		for page = 1, _hopLowMaxPages do
-			task.delay((page - 1) * _hopLowPageDelay, function()
-				local servers = nil
-				for attempt = 1, _hopLowPageRetries do
-					local ok, result = pcall(function()
-						return browser:InvokeServer(page)
-					end)
-					if ok and type(result) == "table" then
-						servers = result
-						break
-					end
-					if attempt < _hopLowPageRetries then
-						task.wait(_hopLowRetryDelay)
-					end
-				end
-				if type(servers) == "table" then
-					for jobId, data in pairs(servers) do
-						if type(data) == "table" then
-							local jid = tostring(jobId or "")
-							local count = tonumber(data.Count or data.count or data.playing)
-							if jid ~= ""
-								and count
-								and jid ~= tostring(game.JobId)
-								and count >= 1
-								and count <= _hopLowMaxPlayers
-								and not _hopLowTried[jid]
-							then
-								local old = byJob[jid]
-								if not old or count < old.players then
-									byJob[jid] = { id = jid, players = count }
-								end
-							end
-						end
-					end
-				end
-				completed = completed + 1
-			end)
-		end
-
-		local deadline = os.clock() + _hopLowScanTimeout
-		repeat task.wait(0.03)
-		until completed >= _hopLowMaxPages or os.clock() >= deadline
-
-		-- Sắp xếp bucket theo số player tăng dần, shuffle trong cùng bucket
-		local buckets, counts = {}, {}
-		for _, server in pairs(byJob) do
-			local c = math.floor(server.players)
-			if not buckets[c] then
-				buckets[c] = {}
-				table.insert(counts, c)
-			end
-			table.insert(buckets[c], server)
-		end
-		table.sort(counts)
-
-		local pool = {}
-		local rng = Random.new()
-		for _, c in ipairs(counts) do
-			local bucket = buckets[c]
-			for i = #bucket, 2, -1 do
-				local j = rng:NextInteger(1, i)
-				bucket[i], bucket[j] = bucket[j], bucket[i]
-			end
-			for _, sv in ipairs(bucket) do
-				table.insert(pool, sv)
-			end
-		end
-		return pool, nil
-	end
-
-	local function _waitHopTP(duration)
-		local deadline = os.clock() + duration
-		repeat
-			if _hopLowTP.FailedAt > 0 then return "failed" end
-			if _hopLowTP.StartedAt > 0 then return "started" end
-			task.wait(0.05)
-		until os.clock() >= deadline
-		return "timeout"
-	end
-
-	local function _tryHopServer(server)
-		if not server or not server.id then return false end
-		_hopLowTP.StartedAt = 0
-		_hopLowTP.FailedAt = 0
-		local browser = game:GetService("ReplicatedStorage"):FindFirstChild("__ServerBrowser")
-		if browser then
-			local ok = pcall(function()
-				browser:InvokeServer("teleport", server.id)
-			end)
-			if ok then
-				local state = _waitHopTP(1.25)
-				if state == "started" then return true end
-				if state == "failed" then return false end
-			end
-		end
-		-- Fallback TeleportToPlaceInstance
-		local ok2 = pcall(function()
-			_hopTeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, plr)
-		end)
-		if not ok2 then return false end
-		return _waitHopTP(6) == "started"
-	end
-
-	task.spawn(function()
-		-- Chờ game load xong rồi mới bắt đầu check
-		task.wait(10)
-		_hopLowTried[tostring(game.JobId)] = true
-
-		while _hopLowRunning do
-			local currentPlayers = #game:GetService("Players"):GetPlayers()
-			if currentPlayers > _hopLowMaxPlayers then
-				warn("[Hop Low] Server có " .. currentPlayers .. " player (> " .. _hopLowMaxPlayers .. "), đang scan server thấp hơn...")
-
-				local pool, scanError = _scanHopLowServers()
-				if scanError then
-					warn("[Hop Low] Scan lỗi: " .. tostring(scanError))
-					task.wait(3)
-				elseif #pool == 0 then
-					warn("[Hop Low] Không tìm được server ≤ " .. _hopLowMaxPlayers .. " player, reset tried list và scan lại")
-					table.clear(_hopLowTried)
-					_hopLowTried[tostring(game.JobId)] = true
-					task.wait(2)
-				else
-					warn("[Hop Low] Tìm được " .. #pool .. " server low, bắt đầu thử join...")
-					for idx, server in ipairs(pool) do
-						_hopLowTried[server.id] = true
-						warn(string.format("[Hop Low] Thử [%d/%d] %s player | %s",
-							idx, #pool, tostring(server.players), tostring(server.id):sub(1, 12)))
-						if _tryHopServer(server) then
-							warn("[Hop Low] Teleport thành công!")
-							break
-						end
-						warn("[Hop Low] Fail, thử server kế...")
-						task.wait(0.15)
-					end
-				end
-			end
-			task.wait(5)
-		end
-	end)
-end
-
 -- Init
 
 pcall(function()
@@ -1166,36 +954,42 @@ HasItem = function(name)
 	return character:FindFirstChild(name) or plr.Backpack:FindFirstChild(name)
 end
 
-local _checkItemInventoryCtrl = nil
-local _checkItemConfig = nil
+-- checkItem su dung API moi (API cu da bi patch)
+do
+	local _invCtrl, _itemCfg, _itemRep
+	pcall(function() _invCtrl  = require(game:GetService("ReplicatedStorage").Controllers.UI.Inventory) end)
+	pcall(function() _itemCfg  = require(game:GetService("ReplicatedStorage").ItemConfig) end)
+	pcall(function() _itemRep  = require(game:GetService("ReplicatedStorage").Util.ItemReplication) end)
 
-function checkItem(Name)
-	if not _checkItemInventoryCtrl then
-		pcall(function()
-			_checkItemInventoryCtrl = require(game:GetService("ReplicatedStorage").Controllers.UI.Inventory)
-		end)
-	end
-	if not _checkItemConfig then
-		pcall(function()
-			_checkItemConfig = require(game:GetService("ReplicatedStorage").ItemConfig)
-		end)
-	end
-	if not _checkItemInventoryCtrl or not _checkItemConfig then return false end
-	local ok, initialized = pcall(function() return _checkItemInventoryCtrl:GetIfInitialized() end)
-	if not ok or not initialized then return false end
-	local ok2, tiles = pcall(function() return _checkItemInventoryCtrl:GetTiles() end)
-	if not ok2 or not tiles then return false end
-	for _, tile in ipairs(tiles) do
-		local ok3, cfg = pcall(function() return _checkItemConfig.match(tile.ItemId):asNullable() end)
-		if ok3 and cfg then
-			local storageKey = cfg.Index and cfg.Index.StorageKey
-			local displayName = cfg.DisplayName or cfg.Name
-			if storageKey == Name or displayName == Name then
-				return true
+	local function _getItemCount(itemId, networkedUID)
+		if not _itemRep then return 1 end
+		for _, field in ipairs({"Count", "Quantity", "Amount", "Stack"}) do
+			if _itemRep[field] and typeof(_itemRep[field].readClient) == "function" then
+				local ok, val = pcall(function() return _itemRep[field].readClient(itemId, networkedUID) end)
+				if ok and typeof(val) == "number" then return val end
 			end
 		end
+		return 1
 	end
-	return false
+
+	function checkItem(Name)
+		if not _invCtrl or not _itemCfg then return false end
+		local ok1, init = pcall(function() return _invCtrl:GetIfInitialized() end)
+		if not ok1 or not init then return false end
+		local ok2, tiles = pcall(function() return _invCtrl:GetTiles() end)
+		if not ok2 or not tiles then return false end
+		for _, tile in ipairs(tiles) do
+			local ok3, cfg = pcall(function() return _itemCfg.match(tile.ItemId):asNullable() end)
+			if ok3 and cfg then
+				local storageKey  = cfg.Index and cfg.Index.StorageKey
+				local displayName = cfg.DisplayName or cfg.Name
+				if storageKey == Name or displayName == Name then
+					return true
+				end
+			end
+		end
+		return false
+	end
 end
 
 local tw, conn
@@ -1291,8 +1085,8 @@ function StopTween()
 	end
 end
 function tween(v, speed, high)
-	if speed > 200 and speed < math.huge then
-		speed = 200
+	if speed > 280 and speed < math.huge then
+		speed = 280
 	end
 	while not character or not character.PrimaryPart or not character:FindFirstChild("Humanoid") do
 		task.wait()
@@ -1431,70 +1225,43 @@ do
 	end)
 end
 
-do
-	local _Net = game:GetService("ReplicatedStorage").Modules.Net
-	local _RegisterAttack = _Net:WaitForChild("RE/RegisterAttack")
-	local _RegisterHit = _Net:WaitForChild("RE/RegisterHit")
-
-	local function GetAllBladeHits()
-		local bladehits = {}
-		local char = plr.Character
-		if not char or not char:FindFirstChild("HumanoidRootPart") then return bladehits end
-		local charPos = char.HumanoidRootPart.Position
-		for _, v in pairs(workspace.Enemies:GetChildren()) do
-			if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0
-				and (v.HumanoidRootPart.Position - charPos).Magnitude <= 65 then
-				table.insert(bladehits, v)
+FastAttack = function()
+	local char = character
+	local parts = {}
+	for _, v in ipairs(workspace.Enemies:GetChildren()) do
+		local hrp = v:FindFirstChild("HumanoidRootPart")
+		local hum = v:FindFirstChild("Humanoid")
+		if v ~= char and hrp and hum and hum.Health > 0 and plr:DistanceFromCharacter(hrp.Position) <= 35 then
+			for _, _v in ipairs(v:GetChildren()) do
+				if _v:IsA("BasePart") and plr:DistanceFromCharacter(hrp.Position) <= 35 then
+					parts[#parts + 1] = { v, _v }
+				end
 			end
 		end
-		return bladehits
 	end
-
-	local function GetPlayerHit()
-		local bladehits = {}
-		local char = plr.Character
-		if not char or not char:FindFirstChild("HumanoidRootPart") then return bladehits end
-		local charPos = char.HumanoidRootPart.Position
-		for _, v in pairs(workspace.Characters:GetChildren()) do
-			if v.Name ~= plr.Name and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0
-				and (v.HumanoidRootPart.Position - charPos).Magnitude <= 65 then
-				table.insert(bladehits, v)
-			end
-		end
-		return bladehits
+	if #parts == 0 then
+		return
 	end
-
-	local function _DoAttack3tn()
-		local bladehits = {}
-		for _, v in pairs(GetAllBladeHits()) do table.insert(bladehits, v) end
-		for _, v in pairs(GetPlayerHit()) do table.insert(bladehits, v) end
-		if #bladehits == 0 then return end
-		local args = { [1] = nil, [2] = {}, [4] = "078da341" }
-		for _, v in pairs(bladehits) do
-			_RegisterAttack:FireServer(0)
-			if not args[1] then args[1] = v.Head end
-			table.insert(args[2], { v, v.HumanoidRootPart })
-			table.insert(args[2], v)
-		end
-		_RegisterHit:FireServer(unpack(args))
-	end
-
-	task.spawn(function()
-		while task.wait(0.06) do
-			if _G.FastAttack == os.time() then
-				pcall(_DoAttack3tn)
-			end
-		end
-	end)
-
-	FastAttack = function()
-		pcall(function()
-			_G.FastAttack = os.time()
-		end)
+	local tool = char:FindFirstChildOfClass("Tool")
+	if #parts > 0 and tool and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
+		game.ReplicatedStorage.Modules.Net["RE/RegisterAttack"]:FireServer()
+		local head = parts[1][1]:FindFirstChild("Head")
+		game.ReplicatedStorage.Modules.Net["RE/RegisterHit"]:FireServer(
+			head,
+			parts,
+			{},
+			tostring(plr.UserId):sub(2, 4) .. tostring(coroutine.running()):sub(11, 15)
+		)
+		cloneref(r):FireServer(
+			string.gsub("RE/RegisterHit", ".", function(c)
+				return string.char(bit32.bxor(string.byte(c), math.floor(workspace:GetServerTimeNow() / 10 % 10) + 1))
+			end),
+			bit32.bxor(id + 909090, game.ReplicatedStorage.Modules.Net.seed:InvokeServer() * 2),
+			head,
+			parts
+		)
 	end
 end
-
-
 
 function GetNearestChests()
 	local nearest, minDist = nil, 99999
@@ -1535,60 +1302,165 @@ function GetServers()
 	end
 end
 
-function hopLowServer()
-	local browser = game:GetService("ReplicatedStorage"):FindFirstChild("__ServerBrowser")
-	if not browser then return end
-	local candidateServers = {}
-	for page = 1, 15 do
-		local ok, servers = pcall(function()
-			return browser:InvokeServer(page)
-		end)
-		if ok and type(servers) == "table" then
-			for jobId, data in pairs(servers) do
-				if type(data) == "table" then
-					local jid = tostring(jobId or "")
-					local count = tonumber(data.Count or data.count or data.playing)
-					if jid ~= "" and jid ~= tostring(game.JobId) and count and count >= 1 and count <= 6 then
-						table.insert(candidateServers, { id = jid, players = count })
-					end
-				end
-			end
-			if #candidateServers >= 5 then
-				break
-			end
-		end
-		task.wait(0.05)
-	end
+-- hopLowServer nang cap: scan day du, uu tien server it player nhat, co fallback TP
+do
+	local _hopTried   = {}
+	local _hopTP      = { StartedAt = 0, FailedAt = 0 }
+	local _hopSvc     = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
+	local _hopPlr     = game:GetService("Players").LocalPlayer
+	local _MAX        = 5
+	local _PAGES      = 100
+	local _PG_DELAY   = 0.02
+	local _PG_RETRY   = 3
+	local _RT_DELAY   = 0.20
+	local _TIMEOUT    = 8
 
-	table.sort(candidateServers, function(a, b)
-		return a.players < b.players
+	_hopSvc.TeleportInitFailed:Connect(function(p)
+		if p == _hopPlr then _hopTP.FailedAt = os.clock() end
+	end)
+	_hopPlr.OnTeleport:Connect(function(state)
+		local n = ""
+		pcall(function() n = state.Name end)
+		if n == "Failed" then _hopTP.FailedAt = os.clock()
+		else _hopTP.StartedAt = os.clock() end
 	end)
 
-	for _, sv in ipairs(candidateServers) do
-		local ok = pcall(function()
-			browser:InvokeServer("teleport", sv.id)
-		end)
-		if ok then
-			task.wait(3)
-			return true
+	local function _waitTP(dur)
+		local dead = os.clock() + dur
+		repeat
+			if _hopTP.FailedAt  > 0 then return "failed"  end
+			if _hopTP.StartedAt > 0 then return "started" end
+			task.wait(0.05)
+		until os.clock() >= dead
+		return "timeout"
+	end
+
+	local function _scanLow()
+		local browser = game:GetService("ReplicatedStorage"):FindFirstChild("__ServerBrowser")
+		if not browser then return {} end
+		local byJob, done = {}, 0
+		for pg = 1, _PAGES do
+			task.delay((pg-1)*_PG_DELAY, function()
+				local res
+				for a = 1, _PG_RETRY do
+					local ok, r = pcall(function() return browser:InvokeServer(pg) end)
+					if ok and type(r) == "table" then res = r break end
+					if a < _PG_RETRY then task.wait(_RT_DELAY) end
+				end
+				if type(res) == "table" then
+					for jid, data in pairs(res) do
+						if type(data) == "table" then
+							local j = tostring(jid or "")
+							local c = tonumber(data.Count or data.count or data.playing)
+							if j ~= "" and c and j ~= tostring(game.JobId)
+								and c >= 1 and c <= _MAX and not _hopTried[j] then
+								local old = byJob[j]
+								if not old or c < old.players then
+									byJob[j] = { id = j, players = c }
+								end
+							end
+						end
+					end
+				end
+				done = done + 1
+			end)
+		end
+		local dead = os.clock() + _TIMEOUT
+		repeat task.wait(0.03) until done >= _PAGES or os.clock() >= dead
+		local buckets, cnts = {}, {}
+		for _, sv in pairs(byJob) do
+			local c = math.floor(sv.players)
+			if not buckets[c] then buckets[c] = {} table.insert(cnts, c) end
+			table.insert(buckets[c], sv)
+		end
+		table.sort(cnts)
+		local pool, rng = {}, Random.new()
+		for _, c in ipairs(cnts) do
+			local bk = buckets[c]
+			for i = #bk, 2, -1 do
+				local j = rng:NextInteger(1, i)
+				bk[i], bk[j] = bk[j], bk[i]
+			end
+			for _, sv in ipairs(bk) do table.insert(pool, sv) end
+		end
+		return pool
+	end
+
+	local function _tryHop(sv)
+		if not sv or not sv.id then return false end
+		_hopTP.StartedAt = 0
+		_hopTP.FailedAt  = 0
+		local browser = game:GetService("ReplicatedStorage"):FindFirstChild("__ServerBrowser")
+		if browser then
+			local ok = pcall(function() browser:InvokeServer("teleport", sv.id) end)
+			if ok then
+				local s = _waitTP(1.25)
+				if s == "started" then return true end
+				if s == "failed"  then return false end
+			end
+		end
+		local ok2 = pcall(function() _hopSvc:TeleportToPlaceInstance(game.PlaceId, sv.id, _hopPlr) end)
+		if not ok2 then return false end
+		return _waitTP(6) == "started"
+	end
+
+	function hopLowServer()
+		if not Config.HopLow then return end
+		local currentPlayers = #game:GetService("Players"):GetPlayers()
+		if currentPlayers <= _MAX then return end
+		warn("[HopLow] " .. currentPlayers .. " player, dang scan server <= " .. _MAX .. "...")
+		local pool = _scanLow()
+		if #pool == 0 then
+			warn("[HopLow] Khong tim duoc server thap, reset tried list")
+			table.clear(_hopTried)
+			_hopTried[tostring(game.JobId)] = true
+			return
+		end
+		for idx, sv in ipairs(pool) do
+			_hopTried[sv.id] = true
+			warn(string.format("[HopLow] Thu [%d/%d] %s player | %s", idx, #pool, sv.players, sv.id:sub(1,12)))
+			if _tryHop(sv) then
+				warn("[HopLow] Teleport thanh cong!")
+				return
+			end
+			warn("[HopLow] Fail, thu tiep...")
+			task.wait(0.15)
 		end
 	end
 
-	for page = 1, 5 do
-		local ok, servers = pcall(function()
-			return browser:InvokeServer(page)
-		end)
-		if ok and type(servers) == "table" then
-			for jobId, data in pairs(servers) do
-				local jid = tostring(jobId or "")
-				if jid ~= "" and jid ~= tostring(game.JobId) then
-					local ok2 = pcall(function()
-						browser:InvokeServer("teleport", jid)
-					end)
-					if ok2 then
-						task.wait(3)
-						return true
-					end
+	-- Vong lap nen: tu dong hop khi server > 5 player
+	task.spawn(function()
+		task.wait(10)
+		_hopTried[tostring(game.JobId)] = true
+		while true do
+			if Config.HopLow then
+				local cp = #game:GetService("Players"):GetPlayers()
+				if cp > _MAX then
+					hopLowServer()
+				end
+			end
+			task.wait(5)
+		end
+	end)
+end
+
+function hopapifruit()
+	local cachedJobs = {}
+	local okCache, cacheData = pcall(function()
+		return game.HttpService:JSONDecode(readfile("cacduma.json"))
+	end)
+	if okCache and cacheData then
+		cachedJobs = cacheData
+	end
+	local thua = game.HttpService:JSONDecode(game:HttpGet("http://fi11.bot-hosting.net:20758/api/name=fruitspawn"))
+	if thua and thua["success"] and thua["data"] then
+		for _, v in pairs(thua["data"]) do
+			local jobid = v["jobid"]
+			if jobid and jobid ~= game.JobId and v.player >= 8 and v["placeid"] == tonumber(game.PlaceId) then
+				local lastVisit = cachedJobs[jobid]
+				if not lastVisit or (math.floor(tick()) - lastVisit) > 3600 then
+					game:GetService("ReplicatedStorage"):WaitForChild("__ServerBrowser"):InvokeServer("teleport", jobid)
+					break
 				end
 			end
 		end
@@ -1774,50 +1646,33 @@ function Hop(k, W)
 end
 
 local bringMob = function(v, s)
-	if not character or not character.PrimaryPart then return end
-	pcall(sethiddenproperty, plr, "SimulationRadius", math.huge)
-	local MidPoint, Count = Vector3.zero, 0
-	local MobsTable = {}
-	for _, Mon in workspace.Enemies:GetChildren() do
-		if (not v or Mon.Name == v) and Mon:FindFirstChild("Humanoid") and Mon.Humanoid.Health > 0 and Mon:FindFirstChild("HumanoidRootPart") then
-			local MonPosition = Mon.HumanoidRootPart.Position
-			if MonPosition and isnetworkowner(Mon.PrimaryPart) then
-				Count = Count + 1
-				Mon:SetAttribute("OldPosition", Mon:GetAttribute("OldPosition") or MonPosition)
-				MidPoint = MidPoint + MonPosition
-				table.insert(MobsTable, Mon)
+	if not character or not character.PrimaryPart then
+		return
+	end
+	local targets = {}
+	for _, x in next, workspace.Enemies:GetChildren() do
+		local h = x:FindFirstChildOfClass("Humanoid")
+		if
+			x.PrimaryPart
+			and h
+			and h.Health > 0
+			and (not v or x.Name == v)
+			and plr:DistanceFromCharacter(x.PrimaryPart.Position) <= 180
+		then
+			targets[#targets + 1] = x
+			if #targets == 3 then
+				break
 			end
 		end
 	end
-	if Count == 0 then return end
-	MidPoint = CFrame.new(MidPoint / Count)
-	for _, ChildInstance in pairs(MobsTable) do
-		pcall(function()
-			if ChildInstance:GetAttribute("IgnoreGrab") then return end
-			if (ChildInstance:GetAttribute("FailureCount") or 0) > 7 then return end
-			local RootPart = ChildInstance:FindFirstChild("HumanoidRootPart")
-			if not RootPart then return end
-			local BodyVelocity = RootPart:FindFirstChild("FarmingVelocity")
-			if not BodyVelocity then
-				BodyVelocity = Instance.new("BodyVelocity")
-				BodyVelocity.Name = "FarmingVelocity"
-				BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-				BodyVelocity.Parent = RootPart
-			end
-			BodyVelocity.Velocity = Vector3.new(0, 0, 0)
-			local BodyPosition = RootPart:FindFirstChild("FarmingPosition")
-			if not BodyPosition then
-				BodyPosition = Instance.new("BodyPosition")
-				BodyPosition.Name = "FarmingPosition"
-				BodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-				BodyPosition.P = 4.12
-				BodyPosition.D = 1000
-				BodyPosition.Parent = RootPart
-			end
-			ChildInstance:SetAttribute("IsGrabbed", true)
-			ChildInstance.HumanoidRootPart.CFrame = MidPoint
-			ChildInstance:SetAttribute("MidPoint", MidPoint)
-		end)
+	if #targets == 0 then
+		return
+	end
+	local t = targets[1].PrimaryPart.CFrame
+	for _, x in next, targets do
+		if isnetworkowner(x.PrimaryPart) then
+			x.PrimaryPart.CFrame = t
+		end
 	end
 end
 
@@ -1890,116 +1745,45 @@ function Seabeast()
 	end
 end
 
--- 3tn: CaculateCircreDirection port
-local _circleAngle, _lastCircleChange = 30, tick()
-local function getCircleDirection(pos)
-	if _circleAngle > 50000 then _circleAngle = 60 end
-	if tick() - _lastCircleChange > 0.4 then
-		_circleAngle = _circleAngle + 80
-		_lastCircleChange = tick()
-	end
-	return pos + Vector3.new(math.cos(math.rad(_circleAngle)) * 40, 0, math.sin(math.rad(_circleAngle)) * 40)
-end
 local function KillMonster(_v)
 	while not (character and character:FindFirstChildOfClass("Humanoid")) do
 		task.wait()
 	end
-	if character.Humanoid.Health <= 0 then return end
-	for _, v2 in {workspace.Enemies, game.ReplicatedStorage} do
-		for _, v in next, v2:GetChildren() do
-			if v.Name:find(_v) and v.PrimaryPart and v:FindFirstChildOfClass("Humanoid") and v.Humanoid.Health > 0 then
-				-- Ghost mob check: nếu không có network owner sau 5s → skip
-				pcall(sethiddenproperty, plr, "SimulationRadius", math.huge)
-				local ghostCheckStart = tick()
-				while not pcall(isnetworkowner, v.PrimaryPart) and (tick() - ghostCheckStart) < 5 do
-					task.wait(0.5)
-				end
-				if not pcall(isnetworkowner, v.PrimaryPart) then
-					warn("KillMonster: ghost mob detected (no network owner), skipping", v.Name)
-					break
-				end
-				local Count = 0
-				local Debounce = os.time()
-				local lastHealth = v.Humanoid.Health
-				local healthStuckCount = 0  -- 3tn: MAX_ATTACK_DURATION = 3
-				local healthStuckTotal = 0  -- 3tn: MAX_ATTACK_DURATION_2 = 60
-				local noOwnerCount = 0
-				repeat
-					task.wait()
-					local hum = v:FindFirstChildOfClass("Humanoid")
-					local hrp = v:FindFirstChild("HumanoidRootPart") or v.PrimaryPart
-					if not hum or hum.Health <= 0 then break end
-					if not hrp then break end
-					if character.Humanoid.Health <= 0 then return end
-					-- Ghost mob: mất network ownership liên tiếp 3s → bỏ qua
-					if not isnetworkowner(hrp) then
-						noOwnerCount = noOwnerCount + 1
-						if noOwnerCount >= 3 then
-							warn("KillMonster: lost network ownership 3s, ghost mob → skip")
+	if character.Humanoid.Health > 0 then
+		for _, v2 in
+			{
+				workspace.Enemies,
+				game.ReplicatedStorage,
+			}
+		do
+			for _, v in next, v2:GetChildren() do
+				if v.Name:find(_v) and v.PrimaryPart and v:FindFirstChildOfClass("Humanoid") then
+					repeat
+						task.wait()
+						if
+							not v
+							or not v.PrimaryPart
+							or not v:FindFirstChildOfClass("Humanoid")
+							or v.Humanoid.Health <= 0
+						then
 							break
 						end
-					else
-						noOwnerCount = 0
-					end
-					-- 3tn: TweenController.Create(CaculateCircreDirection(...) + Vector3.new(0,35,0))
-					local circlePos = getCircleDirection(hrp.Position) + Vector3.new(0, 35, 0)
-					tween(CFrame.new(circlePos), 350)
-					if plr:DistanceFromCharacter(hrp.Position) <= 250 then
-						bringMob(v.Name)  -- 3tn: CombatController.Grab
-						if plr:DistanceFromCharacter(hrp.Position) <= 100 then
-							equipWeapon()
-							FastAttack()   -- 3tn: AttackController:Attack
-						end
-						if os.time() ~= Debounce then
-							Debounce = os.time()
-							Count = Count + 1
-							if hum.Health == lastHealth then
-								healthStuckCount = healthStuckCount + 1
-								healthStuckTotal = healthStuckTotal + 1
-							else
-								healthStuckCount = 0
-								lastHealth = hum.Health
-							end
-							-- 3tn: MAX_ATTACK_DURATION=3 → return mob to OldPosition
-							if healthStuckCount >= 3 then
-								healthStuckCount = 0
-								local oldPos = v:GetAttribute("OldPosition")
-								if oldPos then
-									pcall(function()
-										v:SetPrimaryPartCFrame(CFrame.new(oldPos))
-									end)
-									v:SetAttribute("IgnoreGrab", true)
-									v:SetAttribute("FailureCount", (v:GetAttribute("FailureCount") or 0) + 1)
-									warn("KillMonster: returning mob to OldPosition #" .. (v:GetAttribute("FailureCount") or 0))
-								end
-							end
-							-- 3tn: FailureCount > 5 → hop
-							if (v:GetAttribute("FailureCount") or 0) > 5 then
-								warn("KillMonster: FailureCount > 5, hopping")
-								hopLowServer()
-								return
-							end
-							-- 3tn: MAX_ATTACK_DURATION_2=60 total stuck → hop
-							if healthStuckTotal >= 60 then
-								warn("KillMonster: health stuck 60s total, hopping")
-								hopLowServer()
-								return
-							end
-							-- absolute timeout
-							if Count > 90 then
-								warn("KillMonster: timeout 90s, hopping")
-								hopLowServer()
-								return
+						tween(v.PrimaryPart.Position + Vector3.new(0, 25, 7), 200)
+						if plr:DistanceFromCharacter(v.PrimaryPart.CFrame.Position) <= 200 then
+							tween(v.PrimaryPart.Position + Vector3.new(0, 25, 7), math.huge)
+							if plr:DistanceFromCharacter(v.PrimaryPart.CFrame.Position) <= 50 then
+								equipWeapon()
+								FastAttack()
 							end
 						end
-					end
-				until not v
-					or not v.PrimaryPart
-					or not v:FindFirstChildOfClass("Humanoid")
-					or v.Humanoid.Health <= 0
-					or character.Humanoid.Health <= 0
-					or not character:FindFirstChild("Humanoid")
-				break
+					until not v
+						or not v.PrimaryPart
+						or not v:FindFirstChildOfClass("Humanoid")
+						or v.Humanoid.Health <= 0
+						or character.Humanoid.Health <= 0
+						or not character:FindFirstChild("Humanoid")
+					break
+				end
 			end
 		end
 	end
@@ -2017,7 +1801,7 @@ function takeQuest()
 	if not GetQuestData() or QuestController.CurrentQuestName ~= q.NameQuest then
 		local questPos = getQuestPosition()
 		if questPos then
-			tween(questPos, 350).Completed:Wait()
+			tween(questPos, 200).Completed:Wait()
 			task.wait(0.25)
 			game.ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", q.NameQuest, q.ID)
 		end
@@ -2261,7 +2045,7 @@ takeQuestCake = function(b)
 			end
 		end
 		-- print(p,qn,id,lvrq)
-		tween(p, 350).Completed:Wait()
+		tween(p, 200).Completed:Wait()
 		if plr:DistanceFromCharacter(p) < 5 then
 			task.wait(1)
 			game.ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", tostring(qn), id)
@@ -2301,7 +2085,7 @@ takeQuestBone = function(b)
 			end
 		end
 		-- print(p,qn,id,lvrq)
-		tween(p, 350).Completed:Wait()
+		tween(p, 200).Completed:Wait()
 		if plr:DistanceFromCharacter(p) < 5 then
 			task.wait(1)
 			game.ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", tostring(qn), id)
@@ -2354,7 +2138,7 @@ end
 
 function tweenMobSpawn(v)
 	if game.ReplicatedStorage.FortBuilderReplicatedSpawnPositionsFolder:FindFirstChild(v) then
-		return tween(game.ReplicatedStorage.FortBuilderReplicatedSpawnPositionsFolder:FindFirstChild(v), 350)
+		return tween(game.ReplicatedStorage.FortBuilderReplicatedSpawnPositionsFolder:FindFirstChild(v), 200)
 	end
 end
 
@@ -2415,7 +2199,7 @@ GetSG = function()
 			and (game.Lighting.ClockTime > 16 or game.Lighting.ClockTime < 5)
 		then
 			if plr:DistanceFromCharacter(Vector3.new(-8654, 140, 6167)) > 50 then
-				tween(CFrame.new(-8654, 140, 6167), 350).Completed:Wait()
+				tween(CFrame.new(-8654, 140, 6167), 200).Completed:Wait()
 			end
 			game.ReplicatedStorage.Remotes.CommF_:InvokeServer("gravestoneEvent", 2)
 			game.ReplicatedStorage.Remotes.CommF_:InvokeServer("gravestoneEvent", 2, true)
@@ -2445,7 +2229,7 @@ GetSG = function()
 							then
 								break
 							end
-							tween(v.PrimaryPart.CFrame * CFrame.new(0, 15, 10), 350)
+							tween(v.PrimaryPart.CFrame * CFrame.new(0, 15, 10), 200)
 							if plr:DistanceFromCharacter(v.PrimaryPart.CFrame.Position) <= 220 then
 								tween(v.PrimaryPart.CFrame * CFrame.new(0, 15, 10), math.huge)
 								if plr:DistanceFromCharacter(v.PrimaryPart.CFrame.Position) <= 40 then
@@ -2512,60 +2296,12 @@ UnlockSecondSea = function()
 	end
 end
 
-local FRUITS_1M_NAMES = {
-	["quake"] = true, ["buddha"] = true, ["love"] = true, ["spider"] = true,
-	["sound"] = true, ["phoenix"] = true, ["portal"] = true, ["rumble"] = true,
-	["pain"] = true, ["blizzard"] = true, ["gravity"] = true, ["mammoth"] = true,
-	["t-rex"] = true, ["trex"] = true, ["dough"] = true, ["shadow"] = true,
-	["venom"] = true, ["control"] = true, ["spirit"] = true, ["dragon"] = true,
-	["leopard"] = true, ["kitsune"] = true, ["gas"] = true, ["yeti"] = true
-}
-
-local function is1MFruitName(name)
-	if not name then return false end
-	local lower = string.lower(tostring(name))
-	for k in pairs(FRUITS_1M_NAMES) do
-		if lower:find(k) then
-			return true
-		end
-	end
-	return false
-end
-
-local function get1MFruitTool()
-	for _, container in ipairs({ plr.Character, plr.Backpack }) do
-		if container then
-			for _, tool in ipairs(container:GetChildren()) do
-				if tool:IsA("Tool") and tool.Name:find("Fruit") then
-					local ori = tool:GetAttribute("OriginalName") or tool.Name
-					if is1MFruitName(tool.Name) or is1MFruitName(ori) then
-						return tool
-					end
-				end
-			end
-		end
-	end
-	return nil
-end
-
 getFruitValue = function(_v)
-	if not IRS or not KEYS or not MATCH then
-		pcall(function()
-			KEYS = require(game.ReplicatedStorage.ItemReplicationService.KEYS)
-			IRS = require(game.ReplicatedStorage.ItemReplicationService)
-			MATCH = require(game.ReplicatedStorage.ItemConfig.Storage).match
-		end)
-	end
-	if IRS and KEYS and MATCH then
-		local ok, data = pcall(function() return IRS:GetItems(KEYS.QUANTITY) end)
-		if ok and type(data) == "table" then
-			for i, v in next, data do
-				local matched = MATCH(v.ItemId)
-				local item = matched and (matched._ok or (matched.asNullable and matched:asNullable()))
-				if item and item.Display and item.Display.Category == "Blox Fruit" and item.Quality and item.Quality.MoneyPrice and item.Quality.MoneyPrice >= _v then
-					return item.Index.StorageKey
-				end
-			end
+	local data = IRS:GetItems(KEYS.QUANTITY)
+	for i, v in next, data do
+		local item = MATCH(v.ItemId)._ok
+		if item.Display.Category == "Blox Fruit" and item.Quality.MoneyPrice >= _v then
+			return item.Index.StorageKey
 		end
 	end
 	return nil
@@ -2581,14 +2317,7 @@ if PLACE_ID.sea2() and zQuestProRemote then
 	local zQuestProConnection = zQuestProRemote.OnClientEvent:Connect(function(a)
 		if a == "promptDialogue" then
 			warn("Skider Hub : Finished cutscene")
-			task.wait(1)
-			pcall(function()
-				game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TravelZou")
-			end)
-			task.wait(3)
-			if not PLACE_ID.sea3() then
-				hopLowServer()
-			end
+			hopLowServer()
 		end
 	end)
 	if zQuestProConnection then
@@ -2598,22 +2327,17 @@ end
 
 UnlockThirdSea = function()
 	local check = game.ReplicatedStorage.Remotes.CommF_:InvokeServer("ZQuestProgress", "Check")
-	local unlockables = game.ReplicatedStorage.Remotes.CommF_:InvokeServer("GetUnlockables")
-	local flamingoAccess = unlockables and unlockables.FlamingoAccess
-	local talk = game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "1")
-	local trevorDone = flamingoAccess or (talk == 0) or (check == 0) or (check == 1)
-	warn("ZQuestProgress:", check, "FlamingoAccess:", flamingoAccess, "talk:", talk, "trevorDone:", trevorDone)
-	if trevorDone then
+	if game.ReplicatedStorage.Remotes.CommF_:InvokeServer("GetUnlockables").FlamingoAccess then
+		warn("ZQuestProgress", check)
 		if check == 0 then
-			local t = tick()
-			repeat
+			game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TravelZou")
+			if plr:DistanceFromCharacter(Vector3.new(0, 0, 0)) < 20000 then
 				game.ReplicatedStorage.Remotes.CommF_:InvokeServer("ZQuestProgress", "Begin")
-				task.wait(1)
-			until plr:DistanceFromCharacter(Vector3.new(0, 0, 0)) > 20000 or tick() - t > 15
+			end
 			if CheckMonster("rip_indra") then
 				KillMonster("rip_indra")
 			else
-				hopLowServer()
+				plr:Kick("Rejoin to fix blox kid")
 			end
 		elseif check == 1 then
 			game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TravelZou")
@@ -2624,45 +2348,38 @@ UnlockThirdSea = function()
 				game.ReplicatedStorage.Remotes.CommF_:InvokeServer("ZQuestProgress", "Begin")
 			else
 				if plr:DistanceFromCharacter(Vector3.new(2288, 15, 863)) > 15 then
-					tween(CFrame.new(2288, 15, 863), 350).Completed:Wait()
+					tween(CFrame.new(2288, 15, 863), 200).Completed:Wait()
 					return true
-				end
-				if not CheckMonster("Don Swan") then
-					hopLowServer()
-					task.wait(5)
 				end
 			end
 		end
 	else
-		if talk and (talk == 1 or talk ~= 2) then
-			local df = getFruitValue(1000000)
-			if df then
-				if talk == 1 then
-					game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "2")
-					task.wait(0.75)
-				end
-				PAUSE_AUTO_STORE = true
-				game.ReplicatedStorage.Remotes.CommF_:InvokeServer("LoadFruit", df)
-				task.wait(0.5)
-				for _, tool in ipairs(plr.Backpack:GetChildren()) do
-					if tool:IsA("Tool") and tool.Name:find("Fruit") then
-						character.Humanoid:EquipTool(tool)
-						break
-					end
-				end
-				game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "1")
-				game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "2")
-				game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "3")
-				PAUSE_AUTO_STORE = false
-			else
-				local df = getFruits()
+		local talk = game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "1")
+		if talk then
+			if talk == 1 or talk ~= 2 then
+				local df = getFruitValue(1000000)
 				if df then
-					pcall(function()
-						tween(df:GetPivot(), 350).Completed:Wait()
-					end)
+					if talk == 1 then
+						game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "2")
+						task.wait(0.75)
+					end
+					PAUSE_AUTO_STORE = true
+					game.ReplicatedStorage.Remotes.CommF_:InvokeServer("LoadFruit", df)
+					equipTool(getfruitid(df))
+					game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "1")
+					game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "2")
+					game.ReplicatedStorage.Remotes.CommF_:InvokeServer("TalkTrevor", "3")
+					PAUSE_AUTO_STORE = false
+				else
+					local df = getFruits()
+					if df then
+						pcall(function()
+							tween(df:GetPivot(), 200).Completed:Wait()
+						end)
+					end
+					hopapifruit()
+					task.wait(5)
 				end
-				hopLowServer()
-				task.wait(5)
 			end
 		end
 	end
@@ -2700,25 +2417,28 @@ end
 
 warn("loaded a")
 
-local _storeFruitSkipMap = {}
-
 task.spawn(function()
 	while true do
 		if not PAUSE_AUTO_STORE then
 			pcall(function()
 				local gg = {}
 				local rs = game:GetService("ReplicatedStorage")
-				for _, _v in next, { plr.Backpack, plr.Character } do
+				for _, _v in
+					next,
+					{
+						plr.Backpack,
+						plr.Character,
+					}
+				do
 					if _v then
 						for i, v in next, _v:GetChildren() do
 							if v.Name:find("Fruit") and v:IsA("Tool") then
 								local ori = v:GetAttribute("OriginalName") or v.Name
-								if not _storeFruitSkipMap[ori] then
-									table.insert(gg, { tool = v, ori = ori })
-								else
-									if v.Parent ~= plr.Backpack and character and character:FindFirstChild("Humanoid") then
-										character.Humanoid:UnequipTools()
-									end
+								if not checkItem(v.Name) and not checkItem(ori) then
+									table.insert(gg, {
+										tool = v,
+										ori = ori,
+									})
 								end
 							end
 						end
@@ -2726,10 +2446,8 @@ task.spawn(function()
 				end
 				if #gg > 0 then
 					local sf = {}
-					local okInv, inv = pcall(function()
-						return rs.Remotes.CommF_:InvokeServer("getInventoryFruits")
-					end)
-					if okInv and type(inv) == "table" then
+					local inv = rs.Remotes.CommF_:InvokeServer("getInventoryFruits")
+					if type(inv) == "table" then
 						for _, _v in pairs(inv) do
 							if type(_v) == "table" and _v.Name then
 								sf[_v.Name] = true
@@ -2737,30 +2455,17 @@ task.spawn(function()
 						end
 					end
 					for _, v in pairs(gg) do
-						if sf[v.ori] then
-							_storeFruitSkipMap[v.ori] = true
-							if v.tool.Parent ~= plr.Backpack and character and character:FindFirstChild("Humanoid") then
-								character.Humanoid:UnequipTools()
-							end
-						else
+						if not sf[v.ori] then
 							rs.Remotes.CommF_:InvokeServer("StoreFruit", v.ori, v.tool)
-							task.wait(0.3)
-							if v.tool and (v.tool.Parent == plr.Backpack or v.tool.Parent == plr.Character) then
-								_storeFruitSkipMap[v.ori] = true
-								if v.tool.Parent ~= plr.Backpack and character and character:FindFirstChild("Humanoid") then
-									character.Humanoid:UnequipTools()
-								end
-							else
-								sf[v.ori] = true
-							end
+							sf[v.ori] = true
+						else
+							print("Da co " .. v.ori .. " trong inventory roi tk em")
 						end
 					end
 				end
 			end)
 		end
-		pcall(function()
-			game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("Cousin", "DLCBoxData")
-		end)
+		game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("Cousin", "DLCBoxData")
 		task.wait(1)
 	end
 end)
@@ -2903,7 +2608,7 @@ FarmMaterial = function(material)
 		repeat
 			task.wait()
 			equipWeapon()
-			tween(mob.PrimaryPart.CFrame * CFrame.new(0, 20, 10), 350)
+			tween(mob.PrimaryPart.CFrame * CFrame.new(0, 20, 10), 200)
 			if plr:DistanceFromCharacter(mob.PrimaryPart.CFrame.Position) <= 200 then
 				tween(mob.PrimaryPart.CFrame * CFrame.new(0, 20, 10), math.huge)
 				if plr:DistanceFromCharacter(mob.PrimaryPart.CFrame.Position) <= 45 then
@@ -2913,7 +2618,7 @@ FarmMaterial = function(material)
 			end
 		until not mob or not mob.PrimaryPart or not mob:FindFirstChild("Humanoid") or mob.Humanoid.Health <= 0
 	else
-		tween(materialPos, 350).Completed:Wait()
+		tween(materialPos, 200).Completed:Wait()
 	end
 end
 
@@ -3041,9 +2746,9 @@ DoRaceV2 = function()
 			game.ReplicatedStorage.Remotes.CommF_:InvokeServer("Alchemist", "2")
 		elseif check == 1 then
 			if not plr.Backpack:FindFirstChild("Flower 1") and not character:FindFirstChild("Flower 1") then
-				tween(workspace.Flower1.CFrame, 350)
+				tween(workspace.Flower1.CFrame, 200)
 			elseif not plr.Backpack:FindFirstChild("Flower 2") and not character:FindFirstChild("Flower 2") then
-				tween(workspace.Flower2.CFrame, 350)
+				tween(workspace.Flower2.CFrame, 200)
 			elseif not plr.Backpack:FindFirstChild("Flower 3") and not character:FindFirstChild("Flower 3") then
 				if workspace.Enemies:FindFirstChild("Zombie") then
 					for i, v in pairs(workspace.Enemies:GetChildren()) do
@@ -3058,7 +2763,7 @@ DoRaceV2 = function()
 								then
 									break
 								end
-								tween(v.PrimaryPart.CFrame * CFrame.new(0, 15, 10), 350)
+								tween(v.PrimaryPart.CFrame * CFrame.new(0, 15, 10), 200)
 								if plr:DistanceFromCharacter(v.PrimaryPart.Position) <= 200 then
 									tween(v.PrimaryPart.CFrame * CFrame.new(0, 15, 10), math.huge)
 									equipWeapon()
@@ -3073,7 +2778,7 @@ DoRaceV2 = function()
 						end
 					end
 				else
-					tween(CFrame.new(-5685, 48, -853), 350).Completed:Wait()
+					tween(CFrame.new(-5685, 48, -853), 200).Completed:Wait()
 				end
 			end
 		elseif check == 2 then
@@ -3130,7 +2835,7 @@ DoRaceV3 = function()
 		elseif race == "Rabbit" then
 			for _, v in next, workspace.ChestModels:GetChildren() do
 				if MinkQuestStage < 30 then
-					tween(v.WorldPivot.Position, 350).Completed:Wait()
+					tween(v.WorldPivot.Position, 200).Completed:Wait()
 					MinkQuestStage = MinkQuestStage + 1
 				elseif MinkQuestStage >= 30 then
 					game.ReplicatedStorage.Remotes.CommF_:InvokeServer("Wenlocktoad", "3")
@@ -3222,7 +2927,7 @@ GetSaber = function()
 				if v:IsA("Model") and string.find(v.Name, "Plate") then
 					firetouchinterest(v.Button, character.HumanoidRootPart, 1)
 					firetouchinterest(v.Button, character.HumanoidRootPart, 0)
-					-- tween(v:GetPivot().Position,350).Completed:Wait()
+					-- tween(v:GetPivot().Position,200).Completed:Wait()
 				end
 			end
 		else
@@ -3266,7 +2971,7 @@ GetSaber = function()
 			tween(
 				game.ReplicatedStorage.FortBuilderReplicatedSpawnPositionsFolder["Saber Expert"].CFrame
 					* CFrame.new(0, 15, 0),
-				350
+				200
 			)
 		end
 	end
@@ -3308,7 +3013,7 @@ DoBartiloQuest = function()
 							then
 								break
 							end
-							tween(v.PrimaryPart.Position + Vector3.new(0, 20, 10), 350)
+							tween(v.PrimaryPart.Position + Vector3.new(0, 20, 10), 200)
 							if plr:DistanceFromCharacter(v.PrimaryPart.Position) <= 200 then
 								tween(v.PrimaryPart.Position + Vector3.new(0, 20, 10), math.huge)
 								equipWeapon()
@@ -3319,7 +3024,7 @@ DoBartiloQuest = function()
 					end
 				end
 			else
-				tween(CFrame.new(932.624451, 156.106079, 1180.27466), 350).Completed:Wait()
+				tween(CFrame.new(932.624451, 156.106079, 1180.27466), 200).Completed:Wait()
 			end
 		until checkKilledBanit()
 	elseif data == 1 then
@@ -3378,7 +3083,7 @@ FarmLevelLogic = function()
 						foundMob = true
 						repeat
 							task.wait()
-							local t = tween(hrp.Position + Vector3.new(0, 20, 5), 350)
+							local t = tween(hrp.Position + Vector3.new(0, 20, 5), 200)
 							if plr:DistanceFromCharacter(hrp.Position) <= 160 then
 								if t then
 									t:Cancel()
@@ -3407,7 +3112,7 @@ FarmLevelLogic = function()
 		if not foundMob then
 			local n = game.ReplicatedStorage.FortBuilderReplicatedSpawnPositionsFolder:FindFirstChild("Shanda")
 			if n then
-				tween(n:GetPivot().Position + Vector3.new(0, 25, 0), 350).Completed:Wait()
+				tween(n:GetPivot().Position + Vector3.new(0, 25, 0), 200).Completed:Wait()
 			end
 		end
 	elseif levelData == 3 then
@@ -3439,7 +3144,7 @@ FarmLevelLogic = function()
 						foundMob = true
 						repeat
 							task.wait()
-							local t = tween(hrp.Position + Vector3.new(0, 25, 5), 350)
+							local t = tween(hrp.Position + Vector3.new(0, 25, 5), 200)
 							if plr:DistanceFromCharacter(hrp.Position) <= 160 then
 								if t then
 									t:Cancel()
@@ -3472,7 +3177,7 @@ FarmLevelLogic = function()
 		if not foundMob then
 			local n = game.ReplicatedStorage.FortBuilderReplicatedSpawnPositionsFolder:FindFirstChild("God's Guard")
 			if n then
-				tween(n:GetPivot().Position + Vector3.new(0, 25, 0), 350).Completed:Wait()
+				tween(n:GetPivot().Position + Vector3.new(0, 25, 0), 200).Completed:Wait()
 			end
 		end
 	elseif levelData == 4 or levelData == 1 then
@@ -3494,7 +3199,7 @@ FarmLevelLogic = function()
 						repeat
 							task.wait()
 							takeQuest()
-							local t = tween(v:GetPivot().Position + Vector3.new(0, 20, 5), 350)
+							local t = tween(v:GetPivot().Position + Vector3.new(0, 20, 5), 200)
 							if plr:DistanceFromCharacter(v:GetPivot().Position) <= 160 then
 								if t then
 									t:Cancel()
@@ -3580,7 +3285,7 @@ FarmLevelLogic = function()
 								then
 									Teleport("Mansion")
 								end
-								tween(v2:GetPivot().Position + Vector3.new(0, 25, 0), 350)
+								tween(v2:GetPivot().Position + Vector3.new(0, 25, 0), 200)
 							end
 							task.wait(0.5)
 						until GetMonsterName()
@@ -3626,7 +3331,7 @@ FarmBoneLogic = function()
 		startKillThisNPC = tick()
 		repeat
 			task.wait()
-			tween(mob.PrimaryPart.CFrame * CFrame.new(0, 15, 5), 350)
+			tween(mob.PrimaryPart.CFrame * CFrame.new(0, 15, 5), 200)
 			if plr:DistanceFromCharacter(mob.PrimaryPart.Position) <= 210 then
 				tween(mob.PrimaryPart.CFrame * CFrame.new(0, 15, 5), math.huge)
 				if plr:DistanceFromCharacter(mob.PrimaryPart.Position) <= 30 then
@@ -3637,24 +3342,24 @@ FarmBoneLogic = function()
 			end
 		until not mob or not mob.PrimaryPart or not mob:FindFirstChildOfClass("Humanoid") or mob.Humanoid.Health <= 0 or (tick() - startKillThisNPC) >= 90
 	else
-		tween(CFrame.new(-9515, 164, 5786), 350).Completed:Wait()
+		tween(CFrame.new(-9515, 164, 5786), 200).Completed:Wait()
 	end
 end
 
 FarmKataLogic = function()
 	TRAVEL_TO.sea3()
 	if plr:DistanceFromCharacter(Vector3.new(-2132, 70, -12319)) >= 1200 and not getCakePrince() then
-		tween(CFrame.new(-2251, 146, -12196), 350).Completed:Wait()
+		tween(CFrame.new(-2251, 146, -12196), 200).Completed:Wait()
 	end
 	if getCakePrince() then
 		local Target = getCakePrince()
 		repeat
 			if plr:DistanceFromCharacter(Target.PrimaryPart.CFrame.Position) >= 1200 and getCakePrince() then
 				StopTween()
-				tween(workspace.Map.CakeLoaf.BigMirror.Main.CFrame, 350).Completed:Wait()
+				tween(workspace.Map.CakeLoaf.BigMirror.Main.CFrame, 200).Completed:Wait()
 				task.wait(0.75)
 			end
-			tween(Target.PrimaryPart.CFrame * CFrame.new(0, 17.5, 10), 350)
+			tween(Target.PrimaryPart.CFrame * CFrame.new(0, 17.5, 10), 200)
 			if plr:DistanceFromCharacter(Target.PrimaryPart.CFrame.Position) <= 200 then
 				tween(Target.PrimaryPart.CFrame * CFrame.new(0, 17.5, 10), math.huge)
 				if plr:DistanceFromCharacter(Target.PrimaryPart.CFrame.Position) <= 40 then
@@ -3687,7 +3392,7 @@ FarmKataLogic = function()
 			startKillThisNPC = tick()
 			repeat
 				task.wait()
-				tween(mob.HumanoidRootPart.CFrame * CFrame.new(0, 15, 0), 350)
+				tween(mob.HumanoidRootPart.CFrame * CFrame.new(0, 15, 0), 200)
 				if plr:DistanceFromCharacter(mob.HumanoidRootPart.Position) <= 200 then
 					tween(mob.HumanoidRootPart.CFrame * CFrame.new(0, 15, 0), math.huge)
 					if plr:DistanceFromCharacter(mob.HumanoidRootPart.Position) <= 40 then
@@ -3719,12 +3424,12 @@ GetCDKLogic = function()
 				tween(
 					workspace.Enemies:FindFirstChild("Mythological Pirate").HumanoidRootPart.CFrame
 						* CFrame.new(5, 0, 0),
-					350
+					200
 				)
 			until game.ReplicatedStorage.Remotes.CommF_:InvokeServer("CDKQuest", "Progress").Evil ~= -3
 				and GetMaterial("Alucard Fragment") == 1
 		else
-			tween(Vector3.new(-13239, 520, -6813), 350).Completed:Wait()
+			tween(Vector3.new(-13239, 520, -6813), 200).Completed:Wait()
 		end
 	elseif q.Evil == 1 or q.Evil == -4 then
 		game.ReplicatedStorage.Remotes.CommF_:InvokeServer("CDKQuest", "StartTrial", "Evil")
@@ -3738,7 +3443,7 @@ GetCDKLogic = function()
 								game.ReplicatedStorage.FortBuilderReplicatedSpawnPositionsFolder[v.Name].CFrame.Position
 							) >= 600
 						then
-							tween(game.ReplicatedStorage.FortBuilderReplicatedSpawnPositionsFolder[v.Name].CFrame, 350).Completed:Wait()
+							tween(game.ReplicatedStorage.FortBuilderReplicatedSpawnPositionsFolder[v.Name].CFrame, 200).Completed:Wait()
 						end
 						for _, v2 in next, workspace.Enemies:GetChildren() do
 							if
@@ -3749,7 +3454,7 @@ GetCDKLogic = function()
 							then
 								repeat
 									task.wait()
-									tween(v2.HumanoidRootPart.Position + Vector3.new(0, 25, 10), 350)
+									tween(v2.HumanoidRootPart.Position + Vector3.new(0, 25, 10), 200)
 									if plr:DistanceFromCharacter(v2.HumanoidRootPart.Position) <= 40 then
 										bringMob(v2.Name)
 										equipWeapon()
@@ -3770,7 +3475,7 @@ GetCDKLogic = function()
 				workspace.Enemies:FindFirstChild("Soul Reaper") and not workspace.Map:FindFirstChild("HellDimension")
 			then
 				repeat
-					tween(workspace.Enemies:FindFirstChild("Soul Reaper").HumanoidRootPart.CFrame, 350).Completed:Wait()
+					tween(workspace.Enemies:FindFirstChild("Soul Reaper").HumanoidRootPart.CFrame, 200).Completed:Wait()
 					task.wait()
 				until workspace.Map:FindFirstChild("HellDimension")
 			end
@@ -3779,7 +3484,7 @@ GetCDKLogic = function()
 			end
 			task.wait(1)
 			for i = 1, 3 do
-				tween(workspace.Map.HellDimension["Torch" .. i].CFrame, 350).Completed:Wait()
+				tween(workspace.Map.HellDimension["Torch" .. i].CFrame, 200).Completed:Wait()
 				fireproximityprompt(workspace.Map.HellDimension["Torch" .. i].ProximityPrompt)
 				repeat
 					task.wait()
@@ -3793,7 +3498,7 @@ GetCDKLogic = function()
 					then
 						repeat
 							task.wait()
-							tween(v.HumanoidRootPart.CFrame * CFrame.new(0, 25, 10), 350)
+							tween(v.HumanoidRootPart.CFrame * CFrame.new(0, 25, 10), 200)
 							if plr:DistanceFromCharacter(v.HumanoidRootPart.Position) <= 210 then
 								tween(v.HumanoidRootPart.CFrame * CFrame.new(0, 25, 10), math.huge)
 								if plr:DistanceFromCharacter(v.HumanoidRootPart.Position) <= 40 then
@@ -3837,7 +3542,7 @@ GetCDKLogic = function()
 				if mob and mob.HumanoidRootPart and mob.Humanoid and mob.Humanoid.Health > 0 then
 					repeat
 						task.wait()
-						tween(mob.HumanoidRootPart.CFrame * CFrame.new(0, 15, 5), 350)
+						tween(mob.HumanoidRootPart.CFrame * CFrame.new(0, 15, 5), 200)
 						if plr:DistanceFromCharacter(mob.HumanoidRootPart.Position) <= 210 then
 							tween(mob.HumanoidRootPart.CFrame * CFrame.new(0, 15, 5), math.huge)
 							if plr:DistanceFromCharacter(mob.HumanoidRootPart.Position) <= 30 then
@@ -3851,7 +3556,7 @@ GetCDKLogic = function()
 						or mob.Humanoid.Health <= 0
 						or not mob:FindFirstChild("HumanoidRootPart")
 				else
-					tween(CFrame.new(-9515, 164, 5786), 350).Completed:Wait()
+					tween(CFrame.new(-9515, 164, 5786), 200).Completed:Wait()
 				end
 			until plr.Backpack:FindFirstChild("Hallow Essence") or CheckMonster("Soul Reaper")
 			if plr.Backpack:FindFirstChild("Hallow Essence") then
@@ -3885,7 +3590,7 @@ GetCDKLogic = function()
 		end
 	elseif q.Good == 1 or q.Good == -4 then
 		game.ReplicatedStorage.Remotes.CommF_:InvokeServer("CDKQuest", "StartTrial", "Good")
-		tween(CFrame.new(6148.4116210938, 294.38687133789, -6741.1166992188), 350)
+		tween(CFrame.new(6148.4116210938, 294.38687133789, -6741.1166992188), 200)
 	elseif q.Good == 2 or q.Good == -5 then
 		game.ReplicatedStorage.Remotes.CommF_:InvokeServer("CDKQuest", "StartTrial", "Good")
 		if
@@ -3907,7 +3612,7 @@ GetCDKLogic = function()
 							KillMonster(e.Name)
 						else
 							if workspace.Map.HeavenlyDimension["Torch" .. i].ProximityPrompt.Enabled then
-								tween(workspace.Map.HeavenlyDimension["Torch" .. i].CFrame, 350).Completed:Wait()
+								tween(workspace.Map.HeavenlyDimension["Torch" .. i].CFrame, 200).Completed:Wait()
 								fireproximityprompt(workspace.Map.HeavenlyDimension["Torch" .. i].ProximityPrompt)
 							end
 						end
@@ -4084,7 +3789,7 @@ GetMeleeLogics = {
 		TRAVEL_TO.sea3()
 		TweenToMeleeBuyer("ElectricClaw")
 		game.ReplicatedStorage.Remotes.CommF_:InvokeServer("BuyElectricClaw", "Start")
-		tween(CFrame.new(-12550, 336, -7510), 350).Completed:Wait()
+		tween(CFrame.new(-12550, 336, -7510), 200).Completed:Wait()
 		task.wait(0.5)
 		TweenToMeleeBuyer("ElectricClaw")
 		game.ReplicatedStorage.Remotes.CommF_:InvokeServer("BuyElectricClaw")
@@ -4366,7 +4071,7 @@ AutoDungeon = function()
 						task.wait()
 						pcall(sethiddenproperty, plr, "SimulationRadius", math.huge)
 						pcall(function()
-							tween(v.PrimaryPart.Position + Vector3.new(0, 28, 15), 350)
+							tween(v.PrimaryPart.Position + Vector3.new(0, 28, 15), 200)
 							if plr:DistanceFromCharacter(v.PrimaryPart.Position) <= 200 then
 								tween(v.PrimaryPart.Position + Vector3.new(0, 28, 15), math.huge)
 								if plr:DistanceFromCharacter(v.PrimaryPart.Position) <= 50 then
@@ -4395,7 +4100,7 @@ AutoDungeon = function()
 						found = true
 						tween(
 							workspace["_WorldOrigin"].Locations["Island " .. i]:GetPivot() * CFrame.new(100, 70, 100),
-							350
+							200
 						)
 						task.wait(0.5)
 						break
@@ -4449,12 +4154,12 @@ GetTushita = function()
 		end)()
 	then
 		if not character:FindFirstChild("Holy Torch") and not plr.Backpack:FindFirstChild("Holy Torch") then
-			tween(workspace.Map.Waterfall.SecretRoom.Room.Door.Door.Hitbox.CFrame, 350).Completed:Wait()
+			tween(workspace.Map.Waterfall.SecretRoom.Room.Door.Door.Hitbox.CFrame, 200).Completed:Wait()
 			task.wait(1)
 		else
 			for i = 1, 5, 1 do
 				equipTool("Holy Torch")
-				tween(workspace.Map.Turtle.QuestTorches["Torch" .. tostring(i)].Particles.Main.Enabled, 350).Completed:Wait()
+				tween(workspace.Map.Turtle.QuestTorches["Torch" .. tostring(i)].Particles.Main.Enabled, 200).Completed:Wait()
 			end
 		end
 	else
@@ -4802,8 +4507,8 @@ task.spawn(function()
 					end
 				end
 			end
-		elseif plr.Data.Level.Value >= 850 and not checkItem("Warrior Helmet") and not (plr.Data.Level.Value >= 1500 and PLACE_ID.sea2()) then
-			pcall(DoBartiloQuest)
+		elseif plr.Data.Level.Value >= 850 and not checkItem("Warrior Helmet") then
+			DoBartiloQuest()
 		elseif
 			Config.RaceV3
 			and plr.Data.Level.Value >= 850
@@ -4869,7 +4574,7 @@ task.spawn(function()
 					repeat
 						task.wait()
 						equipWeapon()
-						tween(v:GetPivot() * CFrame.new(0, 20, 10), 350)
+						tween(v:GetPivot() * CFrame.new(0, 20, 10), 200)
 						FastAttack()
 					until not v or not v.PrimaryPart or not v:FindFirstChild("Humanoid") or v.Humanoid.Health <= 0
 				end
