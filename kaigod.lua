@@ -1,6 +1,24 @@
 repeat
 	task.wait()
 until game:IsLoaded() and game.Players.LocalPlayer
+
+do
+	_G.FastAttack = nil
+	_G.Stop = nil
+	SWAN_KILLED = false
+	MinkQuestStage = 0
+	HumanQuestStage = 0
+	CheckedMelee = false
+	CAN_SPAWN_CAKE_PRINCE = true
+	LastServersDataPulled = 0
+	CachedServers = {}
+	QuestController = nil
+	CACHE_NPC_LIST = nil
+	KEYS = nil
+	IRS = nil
+	MATCH = nil
+	RaidController = nil
+end
 Config = {
 	UI = true,
 	Team = "Marines",
@@ -406,6 +424,30 @@ local tps = cloneref(game:GetService("TeleportService"))
 local tweens = cloneref(game:GetService("TweenService"))
 local vim = Instance.new("VirtualInputManager")
 local cs = game:GetService("CollectionService")
+
+-- GOD mode: restore health every frame (critical for 5 FPS)
+if Config.GOD then
+	task.spawn(function()
+		while true do
+			task.wait()
+			pcall(function()
+				if character and character:FindFirstChildOfClass("Humanoid") then
+					local hum = character:FindFirstChildOfClass("Humanoid")
+					if hum.Health < hum.MaxHealth then
+						pcall(sethiddenproperty, hum, "Health", hum.MaxHealth)
+					end
+				end
+			end)
+		end
+	end)
+	plr.CharacterAdded:Connect(function(char)
+		character = char
+		char:WaitForChild("Humanoid").Died:Connect(function()
+			task.wait(1)
+			pcall(function() plr:LoadCharacter() end)
+		end)
+	end)
+end
 
 -- No fall
 
@@ -1759,7 +1801,7 @@ local bringMob = function(v, s)
 			if not BodyVelocity then
 				BodyVelocity = Instance.new("BodyVelocity")
 				BodyVelocity.Name = "FarmingVelocity"
-				BodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+				BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
 				BodyVelocity.Parent = RootPart
 			end
 			BodyVelocity.Velocity = Vector3.new(0, 0, 0)
@@ -1767,7 +1809,7 @@ local bringMob = function(v, s)
 			if not BodyPosition then
 				BodyPosition = Instance.new("BodyPosition")
 				BodyPosition.Name = "FarmingPosition"
-				BodyPosition.MaxForce = Vector3.new(4000, 4000, 4000)
+				BodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
 				BodyPosition.P = 4.12
 				BodyPosition.D = 1000
 				BodyPosition.Parent = RootPart
@@ -1858,7 +1900,6 @@ local function getCircleDirection(pos)
 	end
 	return pos + Vector3.new(math.cos(math.rad(_circleAngle)) * 40, 0, math.sin(math.rad(_circleAngle)) * 40)
 end
-
 local function KillMonster(_v)
 	while not (character and character:FindFirstChildOfClass("Humanoid")) do
 		task.wait()
@@ -1867,11 +1908,22 @@ local function KillMonster(_v)
 	for _, v2 in {workspace.Enemies, game.ReplicatedStorage} do
 		for _, v in next, v2:GetChildren() do
 			if v.Name:find(_v) and v.PrimaryPart and v:FindFirstChildOfClass("Humanoid") and v.Humanoid.Health > 0 then
+				-- Ghost mob check: nếu không có network owner sau 5s → skip
+				pcall(sethiddenproperty, plr, "SimulationRadius", math.huge)
+				local ghostCheckStart = tick()
+				while not pcall(isnetworkowner, v.PrimaryPart) and (tick() - ghostCheckStart) < 5 do
+					task.wait(0.5)
+				end
+				if not pcall(isnetworkowner, v.PrimaryPart) then
+					warn("KillMonster: ghost mob detected (no network owner), skipping", v.Name)
+					break
+				end
 				local Count = 0
 				local Debounce = os.time()
 				local lastHealth = v.Humanoid.Health
 				local healthStuckCount = 0  -- 3tn: MAX_ATTACK_DURATION = 3
 				local healthStuckTotal = 0  -- 3tn: MAX_ATTACK_DURATION_2 = 60
+				local noOwnerCount = 0
 				repeat
 					task.wait()
 					local hum = v:FindFirstChildOfClass("Humanoid")
@@ -1879,12 +1931,22 @@ local function KillMonster(_v)
 					if not hum or hum.Health <= 0 then break end
 					if not hrp then break end
 					if character.Humanoid.Health <= 0 then return end
+					-- Ghost mob: mất network ownership liên tiếp 3s → bỏ qua
+					if not isnetworkowner(hrp) then
+						noOwnerCount = noOwnerCount + 1
+						if noOwnerCount >= 3 then
+							warn("KillMonster: lost network ownership 3s, ghost mob → skip")
+							break
+						end
+					else
+						noOwnerCount = 0
+					end
 					-- 3tn: TweenController.Create(CaculateCircreDirection(...) + Vector3.new(0,35,0))
 					local circlePos = getCircleDirection(hrp.Position) + Vector3.new(0, 35, 0)
 					tween(CFrame.new(circlePos), 350)
-					if plr:DistanceFromCharacter(hrp.Position) <= 150 then
+					if plr:DistanceFromCharacter(hrp.Position) <= 250 then
 						bringMob(v.Name)  -- 3tn: CombatController.Grab
-						if plr:DistanceFromCharacter(hrp.Position) <= 65 then
+						if plr:DistanceFromCharacter(hrp.Position) <= 100 then
 							equipWeapon()
 							FastAttack()   -- 3tn: AttackController:Attack
 						end
