@@ -1389,43 +1389,70 @@ do
 	end)
 end
 
-FastAttack = function()
-	local char = character
-	local parts = {}
-	for _, v in ipairs(workspace.Enemies:GetChildren()) do
-		local hrp = v:FindFirstChild("HumanoidRootPart")
-		local hum = v:FindFirstChild("Humanoid")
-		if v ~= char and hrp and hum and hum.Health > 0 and plr:DistanceFromCharacter(hrp.Position) <= 35 then
-			for _, _v in ipairs(v:GetChildren()) do
-				if _v:IsA("BasePart") and plr:DistanceFromCharacter(hrp.Position) <= 35 then
-					parts[#parts + 1] = { v, _v }
-				end
+do
+	local _Net = game:GetService("ReplicatedStorage").Modules.Net
+	local _RegisterAttack = _Net:WaitForChild("RE/RegisterAttack")
+	local _RegisterHit = _Net:WaitForChild("RE/RegisterHit")
+
+	local function GetAllBladeHits()
+		local bladehits = {}
+		local char = plr.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") then return bladehits end
+		local charPos = char.HumanoidRootPart.Position
+		for _, v in pairs(workspace.Enemies:GetChildren()) do
+			if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0
+				and (v.HumanoidRootPart.Position - charPos).Magnitude <= 65 then
+				table.insert(bladehits, v)
 			end
 		end
+		return bladehits
 	end
-	if #parts == 0 then
-		return
+
+	local function GetPlayerHit()
+		local bladehits = {}
+		local char = plr.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") then return bladehits end
+		local charPos = char.HumanoidRootPart.Position
+		for _, v in pairs(workspace.Characters:GetChildren()) do
+			if v.Name ~= plr.Name and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0
+				and (v.HumanoidRootPart.Position - charPos).Magnitude <= 65 then
+				table.insert(bladehits, v)
+			end
+		end
+		return bladehits
 	end
-	local tool = char:FindFirstChildOfClass("Tool")
-	if #parts > 0 and tool and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
-		game.ReplicatedStorage.Modules.Net["RE/RegisterAttack"]:FireServer()
-		local head = parts[1][1]:FindFirstChild("Head")
-		game.ReplicatedStorage.Modules.Net["RE/RegisterHit"]:FireServer(
-			head,
-			parts,
-			{},
-			tostring(plr.UserId):sub(2, 4) .. tostring(coroutine.running()):sub(11, 15)
-		)
-		cloneref(r):FireServer(
-			string.gsub("RE/RegisterHit", ".", function(c)
-				return string.char(bit32.bxor(string.byte(c), math.floor(workspace:GetServerTimeNow() / 10 % 10) + 1))
-			end),
-			bit32.bxor(id + 909090, game.ReplicatedStorage.Modules.Net.seed:InvokeServer() * 2),
-			head,
-			parts
-		)
+
+	local function _DoAttack3tn()
+		local bladehits = {}
+		for _, v in pairs(GetAllBladeHits()) do table.insert(bladehits, v) end
+		for _, v in pairs(GetPlayerHit()) do table.insert(bladehits, v) end
+		if #bladehits == 0 then return end
+		local args = { [1] = nil, [2] = {}, [4] = "078da341" }
+		for _, v in pairs(bladehits) do
+			_RegisterAttack:FireServer(0)
+			if not args[1] then args[1] = v.Head end
+			table.insert(args[2], { v, v.HumanoidRootPart })
+			table.insert(args[2], v)
+		end
+		_RegisterHit:FireServer(unpack(args))
+	end
+
+	task.spawn(function()
+		while task.wait(0.06) do
+			if _G.FastAttack == os.time() then
+				pcall(_DoAttack3tn)
+			end
+		end
+	end)
+
+	FastAttack = function()
+		pcall(function()
+			_G.FastAttack = os.time()
+		end)
 	end
 end
+
+
 
 function GetNearestChests()
 	local nearest, minDist = nil, 99999
@@ -1705,33 +1732,50 @@ function Hop(k, W)
 end
 
 local bringMob = function(v, s)
-	if not character or not character.PrimaryPart then
-		return
-	end
-	local targets = {}
-	for _, x in next, workspace.Enemies:GetChildren() do
-		local h = x:FindFirstChildOfClass("Humanoid")
-		if
-			x.PrimaryPart
-			and h
-			and h.Health > 0
-			and (not v or x.Name == v)
-			and plr:DistanceFromCharacter(x.PrimaryPart.Position) <= 180
-		then
-			targets[#targets + 1] = x
-			if #targets == 3 then
-				break
+	if not character or not character.PrimaryPart then return end
+	pcall(sethiddenproperty, plr, "SimulationRadius", math.huge)
+	local MidPoint, Count = Vector3.zero, 0
+	local MobsTable = {}
+	for _, Mon in workspace.Enemies:GetChildren() do
+		if (not v or Mon.Name == v) and Mon:FindFirstChild("Humanoid") and Mon.Humanoid.Health > 0 and Mon:FindFirstChild("HumanoidRootPart") then
+			local MonPosition = Mon.HumanoidRootPart.Position
+			if MonPosition and isnetworkowner(Mon.PrimaryPart) then
+				Count = Count + 1
+				Mon:SetAttribute("OldPosition", Mon:GetAttribute("OldPosition") or MonPosition)
+				MidPoint = MidPoint + MonPosition
+				table.insert(MobsTable, Mon)
 			end
 		end
 	end
-	if #targets == 0 then
-		return
-	end
-	local t = targets[1].PrimaryPart.CFrame
-	for _, x in next, targets do
-		if isnetworkowner(x.PrimaryPart) then
-			x.PrimaryPart.CFrame = t
-		end
+	if Count == 0 then return end
+	MidPoint = CFrame.new(MidPoint / Count)
+	for _, ChildInstance in pairs(MobsTable) do
+		pcall(function()
+			if ChildInstance:GetAttribute("IgnoreGrab") then return end
+			if (ChildInstance:GetAttribute("FailureCount") or 0) > 7 then return end
+			local RootPart = ChildInstance:FindFirstChild("HumanoidRootPart")
+			if not RootPart then return end
+			local BodyVelocity = RootPart:FindFirstChild("FarmingVelocity")
+			if not BodyVelocity then
+				BodyVelocity = Instance.new("BodyVelocity")
+				BodyVelocity.Name = "FarmingVelocity"
+				BodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+				BodyVelocity.Parent = RootPart
+			end
+			BodyVelocity.Velocity = Vector3.new(0, 0, 0)
+			local BodyPosition = RootPart:FindFirstChild("FarmingPosition")
+			if not BodyPosition then
+				BodyPosition = Instance.new("BodyPosition")
+				BodyPosition.Name = "FarmingPosition"
+				BodyPosition.MaxForce = Vector3.new(4000, 4000, 4000)
+				BodyPosition.P = 4.12
+				BodyPosition.D = 1000
+				BodyPosition.Parent = RootPart
+			end
+			ChildInstance:SetAttribute("IsGrabbed", true)
+			ChildInstance.HumanoidRootPart.CFrame = MidPoint
+			ChildInstance:SetAttribute("MidPoint", MidPoint)
+		end)
 	end
 end
 
@@ -1804,45 +1848,96 @@ function Seabeast()
 	end
 end
 
+-- 3tn: CaculateCircreDirection port
+local _circleAngle, _lastCircleChange = 30, tick()
+local function getCircleDirection(pos)
+	if _circleAngle > 50000 then _circleAngle = 60 end
+	if tick() - _lastCircleChange > 0.4 then
+		_circleAngle = _circleAngle + 80
+		_lastCircleChange = tick()
+	end
+	return pos + Vector3.new(math.cos(math.rad(_circleAngle)) * 40, 0, math.sin(math.rad(_circleAngle)) * 40)
+end
+
 local function KillMonster(_v)
 	while not (character and character:FindFirstChildOfClass("Humanoid")) do
 		task.wait()
 	end
-	if character.Humanoid.Health > 0 then
-		for _, v2 in
-			{
-				workspace.Enemies,
-				game.ReplicatedStorage,
-			}
-		do
-			for _, v in next, v2:GetChildren() do
-				if v.Name:find(_v) and v.PrimaryPart and v:FindFirstChildOfClass("Humanoid") then
-					repeat
-						task.wait()
-						if
-							not v
-							or not v.PrimaryPart
-							or not v:FindFirstChildOfClass("Humanoid")
-							or v.Humanoid.Health <= 0
-						then
-							break
+	if character.Humanoid.Health <= 0 then return end
+	for _, v2 in {workspace.Enemies, game.ReplicatedStorage} do
+		for _, v in next, v2:GetChildren() do
+			if v.Name:find(_v) and v.PrimaryPart and v:FindFirstChildOfClass("Humanoid") and v.Humanoid.Health > 0 then
+				local Count = 0
+				local Debounce = os.time()
+				local lastHealth = v.Humanoid.Health
+				local healthStuckCount = 0  -- 3tn: MAX_ATTACK_DURATION = 3
+				local healthStuckTotal = 0  -- 3tn: MAX_ATTACK_DURATION_2 = 60
+				repeat
+					task.wait()
+					local hum = v:FindFirstChildOfClass("Humanoid")
+					local hrp = v:FindFirstChild("HumanoidRootPart") or v.PrimaryPart
+					if not hum or hum.Health <= 0 then break end
+					if not hrp then break end
+					if character.Humanoid.Health <= 0 then return end
+					-- 3tn: TweenController.Create(CaculateCircreDirection(...) + Vector3.new(0,35,0))
+					local circlePos = getCircleDirection(hrp.Position) + Vector3.new(0, 35, 0)
+					tween(CFrame.new(circlePos), 350)
+					if plr:DistanceFromCharacter(hrp.Position) <= 150 then
+						bringMob(v.Name)  -- 3tn: CombatController.Grab
+						if plr:DistanceFromCharacter(hrp.Position) <= 65 then
+							equipWeapon()
+							FastAttack()   -- 3tn: AttackController:Attack
 						end
-						tween(v.PrimaryPart.Position + Vector3.new(0, 25, 7), 350)
-						if plr:DistanceFromCharacter(v.PrimaryPart.CFrame.Position) <= 200 then
-							tween(v.PrimaryPart.Position + Vector3.new(0, 25, 7), math.huge)
-							if plr:DistanceFromCharacter(v.PrimaryPart.CFrame.Position) <= 50 then
-								equipWeapon()
-								FastAttack()
+						if os.time() ~= Debounce then
+							Debounce = os.time()
+							Count = Count + 1
+							if hum.Health == lastHealth then
+								healthStuckCount = healthStuckCount + 1
+								healthStuckTotal = healthStuckTotal + 1
+							else
+								healthStuckCount = 0
+								lastHealth = hum.Health
+							end
+							-- 3tn: MAX_ATTACK_DURATION=3 → return mob to OldPosition
+							if healthStuckCount >= 3 then
+								healthStuckCount = 0
+								local oldPos = v:GetAttribute("OldPosition")
+								if oldPos then
+									pcall(function()
+										v:SetPrimaryPartCFrame(CFrame.new(oldPos))
+									end)
+									v:SetAttribute("IgnoreGrab", true)
+									v:SetAttribute("FailureCount", (v:GetAttribute("FailureCount") or 0) + 1)
+									warn("KillMonster: returning mob to OldPosition #" .. (v:GetAttribute("FailureCount") or 0))
+								end
+							end
+							-- 3tn: FailureCount > 5 → hop
+							if (v:GetAttribute("FailureCount") or 0) > 5 then
+								warn("KillMonster: FailureCount > 5, hopping")
+								hopLowServer()
+								return
+							end
+							-- 3tn: MAX_ATTACK_DURATION_2=60 total stuck → hop
+							if healthStuckTotal >= 60 then
+								warn("KillMonster: health stuck 60s total, hopping")
+								hopLowServer()
+								return
+							end
+							-- absolute timeout
+							if Count > 90 then
+								warn("KillMonster: timeout 90s, hopping")
+								hopLowServer()
+								return
 							end
 						end
-					until not v
-						or not v.PrimaryPart
-						or not v:FindFirstChildOfClass("Humanoid")
-						or v.Humanoid.Health <= 0
-						or character.Humanoid.Health <= 0
-						or not character:FindFirstChild("Humanoid")
-					break
-				end
+					end
+				until not v
+					or not v.PrimaryPart
+					or not v:FindFirstChildOfClass("Humanoid")
+					or v.Humanoid.Health <= 0
+					or character.Humanoid.Health <= 0
+					or not character:FindFirstChild("Humanoid")
+				break
 			end
 		end
 	end
