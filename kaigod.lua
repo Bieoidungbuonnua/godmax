@@ -738,7 +738,7 @@ else
 		return t
 	end
 	local logo = Instance.new("ImageLabel", frame)
-	logo.Image = "rbxassetid://96365955041994"
+	logo.Image = "rbxassetid://90412962524051"
 	logo.BackgroundTransparency = 1
 	logo.AnchorPoint = Vector2.new(0.5, 0.5)
 	logo.Position = UDim2.new(0.5, 0, 0.2, 0)
